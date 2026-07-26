@@ -6,3 +6,4 @@ mlflow.db
 local.db
 logs/
 .vscode/
+mlops.ipynb
