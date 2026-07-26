@@ -1,0 +1,24 @@
+name: Reentrainement
+on:
+  schedule:
+    - cron: "0 3 * * 0"       # chaque dimanche 3h
+  workflow_dispatch:           # + bouton manuel
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python -m src.retrain            # lit la verite -> nouveau .pkl
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Commit le nouveau modele
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add models/best_classifier.pkl
+          git commit -m "Nouveau modele reentraine" || echo "Pas de changement"
+          git push
