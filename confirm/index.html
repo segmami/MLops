@@ -29,7 +29,6 @@
     <input type="number" id="pid" placeholder="ex: 42">
     <button class="search" onclick="rechercher()">Rechercher</button>
 
-    <!-- Rempli automatiquement apres recherche -->
     <div id="infos">
       <label>Age</label><input id="age" readonly>
       <label>Salaire</label><input id="salaire" readonly>
@@ -49,7 +48,7 @@
 
   <script>
     const API_URL = "https://mlops-2285.onrender.com";   // ton URL API
-    let predClasse = null;   // memorise la prediction du modele
+    let predClasse = null;
 
     async function rechercher() {
       const id = document.getElementById("pid").value;
@@ -64,7 +63,6 @@
           document.getElementById("infos").style.display = "none";
           return;
         }
-        // remplit les champs (le medecin verifie avec le patient)
         document.getElementById("age").value = data.age;
         document.getElementById("salaire").value = data.salaire;
         document.getElementById("cx").value = data.conso_produit_x;
@@ -93,7 +91,6 @@
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prediction_id: +id, malade: malade }),
         });
-        // compare predit vs reel
         res.style.display = "block";
         const correct = (predClasse === malade);
         res.className = correct ? "ok" : "no";

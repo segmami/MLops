@@ -30,7 +30,6 @@
 
     <div id="res"></div>
 
-    <!-- Numero de suivi a donner au patient -->
     <div id="idbox" class="id-box">
       <div class="num" id="idnum">-</div>
       <div class="lbl">Numero de suivi : a donner au patient pour le medecin</div>
@@ -38,26 +37,23 @@
   </div>
 
   <script>
-    const API_URL = "https://mlops-2285.onrender.com";   // <- ton URL API
+    const API_URL = "https://mlops-2285.onrender.com";
     async function predire() {
-      // On assemble le patient SANS le champ malade (on ne le connait pas)
       const patient = {
         age: +age.value, salaire: +salaire.value,
         conso_produit_x: +cx.value, conso_produit_y: +cy.value,
         niveau_vie: niveau_vie.value,
       };
-      const rep = await fetch(API_URL + "/predict", {           // appelle -> /predict
+      const rep = await fetch(API_URL + "/predict", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patient),
       });
       const data = await rep.json();
 
-      // Affiche la prediction
       res.style.display = "block";
       res.className = data.label === "malade" ? "malade" : "sain";
       res.innerHTML = `<b>${data.label.toUpperCase()}</b><br>Proba malade : ${(data.proba_malade*100).toFixed(1)} %`;
 
-      // Affiche l'ID de suivi bien en evidence
       document.getElementById("idbox").style.display = "block";
       document.getElementById("idnum").textContent = data.prediction_id;
     }
