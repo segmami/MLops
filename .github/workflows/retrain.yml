@@ -1,7 +1,7 @@
 name: Reentrainement
 on:
   schedule:
-    - cron: "0 3 * * 0"       # chaque dimanche 3h
+        - cron: "0 3 1 1,7 *"    # le 1er janvier et le 1er juillet a 3h #- cron: "0 3 * * 0"       # chaque dimanche 3h
   workflow_dispatch:           # + bouton manuel
 jobs:
   retrain:
