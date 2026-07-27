@@ -1,1 +1,2 @@
 id,timestamp,age,salaire,conso_produit_x,conso_produit_y,niveau_vie,classe,label,proba_malade
+1,2026-07-26T18:27:33,62.0,28000.0,9.5,8.0,moyen,1,malade,0.812

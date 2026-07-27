@@ -1,0 +1,5 @@
+id,age,salaire,conso_produit_x,conso_produit_y,niveau_vie,malade
+101,55.0,22000.0,9.0,8.0,bas,1
+102,55.0,22000.0,9.0,8.0,bas,0
+103,55.0,22000.0,9.0,8.0,bas,0
+104,52.0,22000.0,9.0,8.0,eleve,1
