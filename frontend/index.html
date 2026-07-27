@@ -12,11 +12,14 @@
     button { margin-top: 20px; width: 100%; padding: 12px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
     #res { margin-top: 18px; padding: 16px; border-radius: 10px; text-align: center; display: none; }
     .malade { background: #fee2e2; color: #991b1b; } .sain { background: #dcfce7; color: #166534; }
+    .id-box { margin-top: 14px; padding: 12px; border-radius: 10px; background: #eef2ff; color: #3730a3; text-align: center; display: none; }
+    .id-box .num { font-size: 1.6rem; font-weight: 700; letter-spacing: .05em; }
+    .id-box .lbl { font-size: .78rem; margin-top: 2px; }
   </style>
 </head>
 <body>
   <div class="card">
-    <h2>Prediction (public)</h2>
+    <h2>Prediction (infirmiere)</h2>
     <label>Age</label><input type="number" id="age" value="62">
     <label>Salaire</label><input type="number" id="salaire" value="28000">
     <label>Conso produit X</label><input type="number" step="0.1" id="cx" value="9.5">
@@ -24,8 +27,16 @@
     <label>Niveau de vie</label>
     <select id="niveau_vie"><option>bas</option><option selected>moyen</option><option>eleve</option></select>
     <button onclick="predire()">Predire</button>
+
     <div id="res"></div>
+
+    <!-- Numero de suivi a donner au patient -->
+    <div id="idbox" class="id-box">
+      <div class="num" id="idnum">-</div>
+      <div class="lbl">Numero de suivi : a donner au patient pour le medecin</div>
+    </div>
   </div>
+
   <script>
     const API_URL = "https://mlops-2285.onrender.com";   // <- ton URL API
     async function predire() {
@@ -35,14 +46,20 @@
         conso_produit_x: +cx.value, conso_produit_y: +cy.value,
         niveau_vie: niveau_vie.value,
       };
-      const rep = await fetch(API_URL + "/predict", {           // appelle FRONT 1 -> /predict
+      const rep = await fetch(API_URL + "/predict", {           // appelle -> /predict
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patient),
       });
       const data = await rep.json();
+
+      // Affiche la prediction
       res.style.display = "block";
       res.className = data.label === "malade" ? "malade" : "sain";
       res.innerHTML = `<b>${data.label.toUpperCase()}</b><br>Proba malade : ${(data.proba_malade*100).toFixed(1)} %`;
+
+      // Affiche l'ID de suivi bien en evidence
+      document.getElementById("idbox").style.display = "block";
+      document.getElementById("idnum").textContent = data.prediction_id;
     }
   </script>
 </body>

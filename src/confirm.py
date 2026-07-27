@@ -1,32 +1,28 @@
 # CONTENU de src/confirm.py
-
 import logging
 from sqlalchemy import create_engine, text
 from src import config
 
 logger = logging.getLogger("patients_api")
 
-engine = create_engine(config.DATABASE_URL)     # meme base que logger.py
+engine = create_engine(config.DATABASE_URL)
 
-# --- Table de la VERITE, creee si absente ---
-# Memes colonnes que le CSV (apres drop) + malade = le VRAI diagnostic.
+# La table relie la verite a une prediction par prediction_id
 with engine.begin() as conn:
     conn.execute(text(
         "CREATE TABLE IF NOT EXISTS diagnostics_confirmes ("
-        "id SERIAL PRIMARY KEY, age FLOAT, salaire FLOAT, "
-        "conso_produit_x FLOAT, conso_produit_y FLOAT, "
-        "niveau_vie TEXT, malade INTEGER)"))
+        "id SERIAL PRIMARY KEY, prediction_id INTEGER, malade INTEGER)"))
 
 INSERT_SQL = (
-    "INSERT INTO diagnostics_confirmes "
-    "(age, salaire, conso_produit_x, conso_produit_y, niveau_vie, malade) VALUES "
-    "(:age, :salaire, :cx, :cy, :niveau_vie, :malade)")
+    "INSERT INTO diagnostics_confirmes (prediction_id, malade) "
+    "VALUES (:prediction_id, :malade)"
+)
 
-def confirm_diagnostic(patient: dict):
-    # patient DOIT contenir "malade" (0 ou 1) : c'est la verite fournie par le medecin.
-    logger.info(f"CONFIRMATION | {patient}")
+def confirm_diagnostic(data: dict):
+    # data contient prediction_id (l'ID) et malade (le vrai diagnostic)
+    logger.info(f"CONFIRMATION | {data}")
     with engine.begin() as conn:
         conn.execute(text(INSERT_SQL), {
-            "age": patient["age"], "salaire": patient["salaire"],
-            "cx": patient["conso_produit_x"], "cy": patient["conso_produit_y"],
-            "niveau_vie": patient["niveau_vie"], "malade": patient["malade"]})
+            "prediction_id": data["prediction_id"],
+            "malade": data["malade"],
+        })

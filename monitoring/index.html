@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monitoring du modele</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; background: #0f1420; color: #e8eef2; }
+    h2 { margin-top: 0; }
+    .stats { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .stat { flex: 1; min-width: 130px; background: #1a2233; border: 1px solid #2b3648; border-radius: 12px; padding: 16px; text-align: center; }
+    .stat .v { font-size: 1.8rem; font-weight: 700; }
+    .stat .l { font-size: .8rem; color: #94a3b8; margin-top: 4px; }
+    .cyan { color: #38e1c6; }
+    table { width: 100%; border-collapse: collapse; background: #1a2233; border-radius: 12px; overflow: hidden; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #2b3648; font-size: .9rem; }
+    th { background: #212c40; color: #94a3b8; font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; }
+    .ok { color: #7ee08a; font-weight: 600; } .no { color: #ff7a8a; font-weight: 600; }
+    button { padding: 10px 16px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <h2>Monitoring du modele</h2>
+  <button onclick="charger()">Rafraichir</button>
+
+  <div class="stats">
+    <div class="stat"><div class="v cyan" id="total">-</div><div class="l">cas evalues</div></div>
+    <div class="stat"><div class="v" id="corrects">-</div><div class="l">predictions correctes</div></div>
+    <div class="stat"><div class="v cyan" id="precision">-</div><div class="l">precision reelle</div></div>
+  </div>
+
+  <table>
+    <thead><tr><th>ID</th><th>Age</th><th>Predit</th><th>Reel</th><th>Resultat</th></tr></thead>
+    <tbody id="rows"><tr><td colspan="5">Chargement...</td></tr></tbody>
+  </table>
+
+  <script>
+    const API_URL = "https://mlops-2285.onrender.com";   // ton URL API
+
+    async function charger() {
+      const rep = await fetch(API_URL + "/monitoring");
+      const data = await rep.json();
+
+      document.getElementById("total").textContent = data.cas_evalues;
+      document.getElementById("corrects").textContent = data.corrects;
+      document.getElementById("precision").textContent =
+        data.precision_reelle !== null ? (data.precision_reelle*100).toFixed(1) + " %" : "-";
+
+      const tbody = document.getElementById("rows");
+      if (!data.details || data.details.length === 0) {
+        tbody.innerHTML = "<tr><td colspan='5'>Aucun cas confirme pour l'instant.</td></tr>";
+        return;
+      }
+      tbody.innerHTML = data.details.map(r => {
+        const predit = r.predit === 1 ? "malade" : "sain";
+        const reel = r.reel === 1 ? "malade" : "sain";
+        const correct = r.predit === r.reel;
+        return `<tr>
+          <td>${r.id}</td><td>${r.age}</td>
+          <td>${predit}</td><td>${reel}</td>
+          <td class="${correct ? 'ok' : 'no'}">${correct ? 'correct' : 'faux'}</td>
+        </tr>`;
+      }).join("");
+    }
+    charger();
+  </script>
+</body>
+</html>
