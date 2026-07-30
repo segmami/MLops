@@ -154,6 +154,90 @@ La table `predictions` (suppositions) et `diagnostics_confirmes` (verite) sont r
 
 ---
 
+## Flux technique : HTML, API, PostgreSQL
+
+Les pages HTML ne parlent jamais directement a la base. Elles passent toujours par l'API, seule a communiquer avec PostgreSQL.
+
+```
+HTML  ->  (JSON)  ->  API FastAPI  ->  (SQL)  ->  PostgreSQL
+```
+
+Le detail du trajet, dans les deux sens :
+
+```
+1. HTML : le JavaScript cree le JSON de la requete (JSON.stringify)
+          et appelle une route de l'API via fetch()
+2. API  : FastAPI recoit le JSON, le valide avec Pydantic (objet Python)
+3. Code : logger.py / confirm.py / main.py executent les requetes SQL
+4. SQLAlchemy : envoie le SQL a PostgreSQL (create_engine + text)
+5. PostgreSQL : stocke ou renvoie les donnees (hebergee sur Render)
+6. API  : FastAPI transforme le resultat en JSON (automatiquement)
+7. HTML : recoit le JSON (rep.json()) et l'affiche
+```
+
+Le JSON circule dans les deux sens : c'est le JavaScript qui cree le JSON de la requete, et FastAPI qui cree le JSON de la reponse.
+
+---
+
+## Les requetes SQL du projet
+
+Le SQL est ecrit dans les fichiers Python (jamais dans le HTML), execute via SQLAlchemy avec des parametres nommes (`:param`) qui protegent de l'injection SQL.
+
+Creation des tables (au demarrage de l'API) :
+
+```sql
+CREATE TABLE IF NOT EXISTS predictions (
+    id SERIAL PRIMARY KEY, timestamp TEXT, age FLOAT, salaire FLOAT,
+    conso_produit_x FLOAT, conso_produit_y FLOAT, niveau_vie TEXT,
+    classe INTEGER, label TEXT, proba_malade FLOAT);
+
+CREATE TABLE IF NOT EXISTS diagnostics_confirmes (
+    id SERIAL PRIMARY KEY, prediction_id INTEGER, malade INTEGER);
+```
+
+Page infirmiere (ecrire une prediction et recuperer son ID) :
+
+```sql
+INSERT INTO predictions (timestamp, age, salaire, conso_produit_x,
+    conso_produit_y, niveau_vie, classe, label, proba_malade)
+VALUES (:timestamp, :age, :salaire, :cx, :cy, :niveau_vie,
+    :classe, :label, :proba)
+RETURNING id;
+```
+
+Page medecin (lire une prediction par ID pour remplir les champs) :
+
+```sql
+SELECT * FROM predictions WHERE id = :id;
+```
+
+Page medecin (enregistrer la verite, reliee par prediction_id) :
+
+```sql
+INSERT INTO diagnostics_confirmes (prediction_id, malade)
+VALUES (:prediction_id, :malade);
+```
+
+Page monitoring (relier prediction et verite pour comparer predit vs reel) :
+
+```sql
+SELECT p.id, p.age, p.classe AS predit, p.proba_malade, d.malade AS reel
+FROM predictions p
+JOIN diagnostics_confirmes d ON d.prediction_id = p.id
+ORDER BY p.id DESC;
+```
+
+Correspondance page, route et SQL :
+
+| Page | Route API | Operation SQL |
+|---|---|---|
+| Infirmiere | POST `/predict` | `INSERT INTO predictions ... RETURNING id` |
+| Medecin | GET `/patient/{id}` | `SELECT * FROM predictions WHERE id` |
+| Medecin | POST `/confirmer` | `INSERT INTO diagnostics_confirmes` |
+| Monitoring | GET `/monitoring` | `SELECT ... JOIN diagnostics_confirmes` |
+
+---
+
 ## Reentrainement automatique
 
 ```
