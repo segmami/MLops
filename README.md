@@ -1,16 +1,52 @@
 # Projet MLOps : Classification patients (malade / sain)
 
-Pipeline MLOps complet de bout en bout : des donnees brutes jusqu'a une API deployee en ligne, avec reentrainement automatique base sur les diagnostics confirmes par un medecin.
+Pipeline MLOps complet de bout en bout : de la creation d'un dossier patient jusqu'a une API deployee en ligne, avec suivi par identifiant, monitoring de la performance reelle et reentrainement automatique base sur les diagnostics confirmes par un medecin.
 
 ## Objectif
 
-Predire la maladie d'un patient, et ameliorer le modele en continu grace aux diagnostics confirmes (verite terrain).
+Predire la maladie d'un patient, mesurer la performance reelle du modele, et l'ameliorer en continu grace aux diagnostics confirmes (verite terrain).
+
+---
+
+## Le workflow metier
+
+Le systeme reproduit un parcours realiste en cabinet, ou la prediction et la verite arrivent a deux moments differents, relies par un identifiant unique.
+
+```
+Semaine 1 : INFIRMIERE
+   cree le dossier patient (page publique)
+   le modele predit malade ou sain
+   une ligne est creee dans "predictions" avec un ID
+   l'ID est affiche et remis au patient
+        |
+        v
+Le PATIENT repart avec son numero de suivi (ID)
+        |
+        v (une semaine plus tard)
+Semaine 2 : MEDECIN
+   tape l'ID du patient (page medecin)
+   les champs se remplissent automatiquement
+   il verifie avec le patient, entre le vrai diagnostic
+   la verite est enregistree dans "diagnostics_confirmes"
+   reliee a la prediction par l'ID
+        |
+        v
+MONITORING
+   relie prediction et verite par l'ID (JOIN)
+   affiche predit vs reel + precision reelle du modele
+        |
+        v
+REENTRAINEMENT
+   le modele reapprend sur les diagnostics confirmes
+```
+
+Regle d'or : on reentraine sur la verite confirmee, jamais sur les predictions du modele (sinon il apprendrait sur ses propres suppositions et se renforcerait dans ses erreurs).
 
 ---
 
 ## Architecture globale
 
-L'architecture de mon projet suit un pipeline MLOps complet : les donnees sont pretraitees puis utilisees pour entrainer un modele Scikit-learn. Les experiences sont suivies avec MLflow et le meilleur modele est sauvegarde au format .pkl. Une API FastAPI expose le modele aux utilisateurs via un frontend. Chaque prediction est enregistree dans PostgreSQL, puis les diagnostics confirmes servent au reentrainement automatique. GitHub Actions assure les tests et le deploiement continu vers Render.
+Les donnees sont pretraitees puis utilisees pour entrainer un modele scikit-learn. Les experiences sont suivies avec MLflow et le meilleur modele est sauvegarde au format .pkl. Une API FastAPI expose le modele via trois interfaces (infirmiere, medecin, monitoring). Chaque prediction est enregistree dans PostgreSQL avec un ID, puis les diagnostics confirmes (relies par cet ID) servent au monitoring et au reentrainement. GitHub Actions assure les tests et le reentrainement, Render construit l'image Docker et deploie l'API.
 
 ```
                     +----------------------+
@@ -21,16 +57,15 @@ L'architecture de mon projet suit un pipeline MLOps complet : les donnees sont p
                                v
                     +----------------------+
                     | Pretraitement        |
-                    | - Nettoyage          |
-                    | - Imputation         |
-                    | - Encodage           |
+                    | nettoyage            |
+                    | imputation           |
+                    | encodage             |
                     +----------+-----------+
                                |
                                v
                     +----------------------+
                     | Entrainement ML      |
-                    | train.py             |
-                    | + MLflow             |
+                    | train.py + MLflow    |
                     +----------+-----------+
                                |
                                v
@@ -41,188 +76,123 @@ L'architecture de mon projet suit un pipeline MLOps complet : les donnees sont p
                                |
                                v
                     +----------------------+
-                    | FastAPI              |
+                    | API FastAPI          |
                     | /predict             |
-                    | /health              |
                     | /confirmer           |
+                    | /patient/{id}        |
+                    | /monitoring          |
+                    | /health              |
                     +-------+--------------+
                             |
-           +----------------+----------------+
-           v                                 v
-+--------------------+            +--------------------+
-| Front Public       |            | Front Medecin      |
-| index.html         |            | confirm.html       |
-| Prediction         |            | Diagnostic reel    |
-+----------+---------+            +---------+----------+
-           |                                |
-           v                                v
-+--------------------+            +--------------------+
-| predictions        |            | diagnostics_       |
-| (supposition IA)   |            | confirmes          |
-+----------+---------+            | (verite terrain)   |
-           |                      +---------+----------+
-           |                                |
-           +---------------+----------------+
-                           v
+        +-------------------+-------------------+
+        v                                       v
++--------------------+                +--------------------+
+| Page infirmiere    |                | Page medecin       |
+| index.html         |                | recherche par ID   |
+| predit + affiche ID|                | remplit + confirme |
++----------+---------+                +---------+----------+
+           |                                    |
+           v                                    v
++--------------------+                +--------------------+
+| predictions        |  <-- ID reliee --  | diagnostics_       |
+| (supposition IA)   |                | confirmes          |
+| id, features,      |                | prediction_id,     |
+| classe, proba      |                | malade (verite)    |
++----------+---------+                +---------+----------+
+           |                                    |
+           +----------------+-------------------+
+                            v
                 +----------------------+
                 | PostgreSQL           |
                 +----------+-----------+
                            |
-                           v
-                +----------------------+
-                | retrain.py           |
-                | Reentrainement       |
-                +----------+-----------+
-                           |
-                           v
-                Nouveau best_classifier.pkl
-                           |
-                           v
-                        GitHub
-                           |
-                           v
-                    GitHub Actions
-                           |
-                           v
-                        Render
-                    (Redeploiement)
+              +------------+------------+
+              v                         v
+    +------------------+     +---------------------+
+    | Page monitoring  |     | retrain.py          |
+    | predit vs reel   |     | reentraine sur      |
+    | precision reelle |     | la verite           |
+    +------------------+     +----------+----------+
+                                        |
+                                        v
+                            Nouveau best_classifier.pkl
+                                        |
+                                        v
+                              GitHub -> GitHub Actions
+                                        |
+                                        v
+                                     Render
+                                 (redeploiement)
 ```
 
 ---
 
-## Flux complet
+## Les trois tables et interfaces
 
-```
-CSV
- v
-Pretraitement
- v
-Entrainement
- v
-Modele (.pkl)
- v
-FastAPI
- v
-Prediction
- v
-PostgreSQL
- v
-Diagnostic confirme
- v
-Reentrainement
- v
-Nouveau modele
- v
-GitHub
- v
-CI/CD
- v
-Render
-```
+| Interface | Role | Ecrit dans |
+|---|---|---|
+| Page infirmiere | cree le dossier, le modele predit, affiche l'ID | `predictions` |
+| Page medecin | recherche par ID, verifie, confirme le vrai diagnostic | `diagnostics_confirmes` |
+| Page monitoring | compare predit vs reel, affiche la precision reelle | lecture (JOIN) |
 
 ---
 
-## Architecture des composants
-
-```
-Frontend
-    |
-    v
-FastAPI
-    |
-    +--------------> Modele (.pkl)
-    |
-    +--------------> PostgreSQL
-```
-
----
-
-## Pipeline MLOps
-
-```
-Collecte des donnees
-        |
-        v
-Pretraitement
-        |
-        v
-Entrainement
-        |
-        v
-MLflow (suivi des experiences)
-        |
-        v
-Sauvegarde du modele
-        |
-        v
-Deploiement API
-        |
-        v
-Predictions
-        |
-        v
-Monitoring
-        |
-        v
-Reentrainement automatique
-```
-
----
-
-## Architecture CI/CD
-
-```
-Developpeur
-     |
- git push
-     |
-     v
-GitHub
-     |
-     v
-GitHub Actions
-     |
-     +-- Tests (pytest)
-     +-- Build Docker
-     +-- Verifications
-     |
-     v
-Render
-     |
-     v
-Application en ligne
-```
-
----
-
-## Les composants a retenir
-
-| Composant | Role |
-|---|---|
-| CSV | Donnees d'origine |
-| Preprocessing | Nettoyer et preparer les donnees |
-| Scikit-learn | Entrainer le modele |
-| MLflow | Suivre les experiences |
-| Joblib | Sauvegarder le modele |
-| FastAPI | Exposer le modele via une API |
-| Frontend | Interface utilisateur |
-| PostgreSQL | Stocker predictions et diagnostics |
-| GitHub | Versionner le code et le modele |
-| GitHub Actions | CI/CD |
-| Docker | Conteneuriser l'application |
-| Render | Heberger l'application |
-| retrain.py | Reentrainer le modele |
-
----
-
-## Les deux tables (a ne pas confondre)
+## Les deux tables (reliees par ID)
 
 | Table | Contenu | Usage |
 |---|---|---|
-| `predictions` | ce que le modele SUPPOSE | monitoring |
-| `diagnostics_confirmes` | ce que le medecin CONFIRME | reentrainement |
+| `predictions` | id, features, classe predite, proba | monitoring |
+| `diagnostics_confirmes` | prediction_id, malade (verite) | reentrainement |
 
-Regle d'or : on reentraine sur la verite confirmee, jamais sur les predictions (sinon le modele apprendrait sur ses propres suppositions).
+Le lien : `diagnostics_confirmes.prediction_id` pointe vers `predictions.id`. Aucune redondance : le medecin ne re-saisit pas les infos du patient, il donne juste l'ID et le vrai diagnostic.
+
+---
+
+## Le monitoring
+
+La table `predictions` (suppositions) et `diagnostics_confirmes` (verite) sont reliees par l'ID. Un JOIN permet de comparer, pour chaque patient, ce que le modele avait predit et le vrai diagnostic. La page monitoring affiche un tableau predit vs reel et calcule la precision reelle du modele en production. C'est cette mesure qui indique quand un reentrainement est utile.
+
+---
+
+## Reentrainement automatique
+
+```
+Declencheur   : GitHub Actions, cron (chaque 6 mois) ou manuel
+Reentrainement: sur une machine GitHub, retrain.py lit
+                diagnostics_confirmes et reentraine. MLflow trace
+                params et metriques, le meilleur modele (F1) est garde
+Nouveau modele: best_classifier.pkl commit sur GitHub
+Redeploiement : Render reconstruit l'image Docker, l'API utilise
+                le nouveau modele
+```
+
+Garde-fous : on reentraine sur la verite (pas les predictions), jamais a chaque prediction (periodique), les tests CI bloquent le mauvais code, MLflow trace chaque version, PostgreSQL conserve la verite et Pydantic valide chaque entree.
+
+---
+
+## Pipeline CI/CD
+
+```
+Code local
+   |
+ git push
+   |
+   v
+GitHub
+   |
+   v
+GitHub Actions
+   +-- Tests (pytest)
+   +-- si un test echoue, tout s'arrete
+   |
+   v
+Render
+   +-- reconstruit l'image Docker
+   +-- redeploie l'API
+   |
+   v
+Application en ligne
+```
 
 ---
 
@@ -237,12 +207,13 @@ MLOPS/
 │   ├── preprocessing.py     imputation + encodage
 │   ├── train.py             entrainement + MLflow
 │   ├── predict.py           charge le .pkl + predit
-│   ├── logger.py            ecrit dans la table predictions
-│   ├── confirm.py           ecrit dans diagnostics_confirmes
+│   ├── logger.py            ecrit dans predictions + renvoie l'ID
+│   ├── confirm.py           ecrit dans diagnostics_confirmes (prediction_id)
 │   └── retrain.py           reentraine sur la verite
-├── api/main.py              /predict + /confirmer + /health
-├── frontend/index.html      page publique
-├── confirme/index.html      page medecin
+├── api/main.py              /predict /confirmer /patient/{id} /monitoring /health
+├── frontend/index.html      page infirmiere (predit + affiche ID)
+├── confirme/index.html      page medecin (recherche par ID + confirme)
+├── monitoring/index.html    page monitoring (predit vs reel + precision)
 ├── tests/test_api.py        tests pytest
 ├── .github/workflows/       ci.yml + retrain.yml
 ├── Dockerfile
@@ -256,8 +227,10 @@ MLOPS/
 | Route | Methode | Role |
 |---|---|---|
 | `/health` | GET | verifier que l'API tourne |
-| `/predict` | POST | prediction (front public) |
-| `/confirmer` | POST | diagnostic confirme (front medecin) |
+| `/predict` | POST | prediction + renvoie l'ID de suivi (infirmiere) |
+| `/patient/{id}` | GET | recupere une prediction par ID (auto-remplissage medecin) |
+| `/confirmer` | POST | enregistre le vrai diagnostic, relie par prediction_id (medecin) |
+| `/monitoring` | GET | compare predit vs reel, precision reelle |
 
 ---
 
@@ -267,11 +240,32 @@ MLOPS/
 |---|---|
 | Code + Dockerfile + modele .pkl | GitHub |
 | Image Docker construite + API | Render (Web Service) |
-| Page publique | Render (Static Site) |
+| Page infirmiere | Render (Static Site) |
 | Page medecin | Render (Static Site) |
+| Page monitoring | Render (Static Site) |
 | Base de donnees | Render (PostgreSQL) |
 
-Le Dockerfile vit sur GitHub. Render construit l'image Docker et fait tourner l'API. A chaque `git push`, GitHub Actions teste (CI) puis Render reconstruit et redeploie (CD).
+Le Dockerfile vit sur GitHub. Render construit l'image Docker et fait tourner l'API. A chaque git push, GitHub Actions teste (CI) puis Render reconstruit et redeploie (CD). Les pages HTML sont des Static Sites separes, redeployes individuellement.
+
+---
+
+## Composants a retenir
+
+| Composant | Role |
+|---|---|
+| CSV | donnees d'origine |
+| Preprocessing | nettoyer et preparer les donnees |
+| scikit-learn | entrainer le modele |
+| MLflow | suivre les experiences |
+| Joblib | sauvegarder le modele |
+| FastAPI | exposer le modele via une API |
+| Frontend | interfaces infirmiere, medecin, monitoring |
+| PostgreSQL | stocker predictions et diagnostics (relies par ID) |
+| GitHub | versionner le code et le modele |
+| GitHub Actions | tests + reentrainement |
+| Docker | conteneuriser l'application |
+| Render | heberger l'application |
+| retrain.py | reentrainer le modele sur la verite |
 
 ---
 
@@ -281,4 +275,10 @@ Python · scikit-learn · MLflow · FastAPI · PostgreSQL · Docker · GitHub ·
 
 ## Points cles
 
-Suivi des experiences avec MLflow · API REST securisee et modulaire · Reentrainement automatique sur nouvelles donnees · CI/CD pour un deploiement continu · Modele toujours a jour et performant
+Suivi par identifiant unique (pas de redondance) · Monitoring de la precision reelle (predit vs verite) · Reentrainement automatique sur la verite terrain · CI/CD pour un deploiement continu · Modele mesure et maintenu a jour
+
+---
+
+## Note sur la pratique industrielle
+
+En production reelle, la prediction et la verite terrain arrivent a des moments differents et sont reliees par un identifiant. Ce projet reproduit ce principe : l'infirmiere cree la prediction (avec ID), le medecin apporte la verite plus tard (relie par le meme ID). C'est ce qui permet un monitoring fiable et un reentrainement sur des donnees reellement verifiees.
